@@ -19,11 +19,13 @@ rover_params = {
                 'Cr': 1.5,         # Tire model coefficient
                 'Dr': 10000.0,     # Tire model coefficient
                 'Er': 0.3,         # Tire model coefficient
-                'Ts': 0.01     # Time step for the model (s)
-}
-
+                'Ts': 0.001         # Time step for the model (s)
+                }
+x0 = np.array([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0])
+u0 = np.array([0.0, 0.0])
 
 # Create an instance of the rover model with the parameter dictionary
 rover_model = rover_model_nlbicycle(rover_params)
 
-print(rover_model.model_ss(np.random.randn(8), np.random.randn(2)))
+print(rover_model.model_ms(x0, u0))
+print(rover_model.model_ss(x0, u0))

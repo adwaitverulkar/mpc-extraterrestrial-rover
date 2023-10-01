@@ -30,7 +30,7 @@ class rover_model_nlbicycle():
 
         Fx = sigmoid(x[7])*acc_sl*x[7] + sigmoid(-x[7])*brake_sl*x[7]
 
-        w_tr = Fx*h/L
+        w_tr = Fx*h/L*0
 
         Fzf = M*9.81*lr/L - w_tr
         Fzr = M*9.81*lf/L + w_tr
@@ -56,12 +56,24 @@ class rover_model_nlbicycle():
                             1/Iz*(Ffy*ca.cos(x[6])*lf-Fry*lr),\
                             u[0],\
                             u[1])
+        
+        self.f = ca.Function('f', [x, u], [ode_rhs])
 
         Ts = rover_params['Ts']
 
-        self.model_ss = ca.Function('model_ss', [x, u], [x+ode_rhs*Ts]).expand()
+        self.model_ss = ca.Function('model_ss', [x, u], [x+self.f(x, u)*Ts]).expand()
+        
 
+        k1 = self.f(x, u)
+        k2 = self.f(x+Ts*k1/2.0, u)
+        k3 = self.f(x+Ts*k2/2.0, u)
+        k4 = self.f(x+Ts*k3, u)
+
+        self.model_ms = ca.Function('model_ms', [x, u], [x+Ts/6.0*(k1 + 2.0*k2 + 2.0*k3 + k4)]).expand()
+        
     def ss_model(self):
         return self.model_ss
     
+    def ms_model(self):
+        return self.model_ms
 

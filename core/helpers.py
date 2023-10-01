@@ -19,7 +19,7 @@ def lateral_force(Fz, alpha, B, C, D, E):
     - Fy: Lateral force (N)
     """
 
-    alpha = ca.atan(ca.tan(alpha))
-    Fy = Fz * D * ca.sin(C * ca.atan(B * alpha - E * (B * alpha)))
+    # Fy = Fz * D * ca.sin(C * ca.atan(B * alpha - E * (B * alpha)))
+    Fy = Fz*D*alpha
 
     return Fy
