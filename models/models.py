@@ -23,14 +23,14 @@ class rover_model_nlbicycle():
         eps = rover_params['eps']
 
         alphaf = x[6]-ca.atan2(x[4] + lf*x[5], ca.sqrt(x[3]*x[3]+eps*eps))
-        alphar = -ca.atan2(x[3] - lr*x[5], ca.sqrt(x[3]*x[3]+eps*eps))
+        alphar = -ca.atan2(x[4] - lr*x[5], ca.sqrt(x[3]*x[3]+eps*eps))
         
         acc_sl = rover_params['acc_sl']
         brake_sl = rover_params['brake_sl']
 
         Fx = sigmoid(x[7])*acc_sl*x[7] + sigmoid(-x[7])*brake_sl*x[7]
 
-        w_tr = Fx*h/L*0
+        w_tr = Fx*h/L
 
         Fzf = M*9.81*lr/L - w_tr
         Fzr = M*9.81*lf/L + w_tr
