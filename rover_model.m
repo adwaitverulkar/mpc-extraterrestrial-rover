@@ -15,74 +15,75 @@ reff = 0.35;
 rl = 0.3;
 Iww = 1;
 
-Iyyf = 10;
-Iyyr = 10;
-
 L = lf+lr;
 
 h = 0.25;
 eps = 1e-4;
 
-acc_sl = 100;
-brake_sl = 10000;
-
-slips = linspace(0, 1, 20).';
-
-Bf = 8;
-Cf = 1.5;
-Df = 1.2;
-Ef = 0.3;
-
-[max_f, ind_f] = max(pacejka(1, Bf, Cf, Df, Ef, slips));
-Caf = (max_f/slips(ind_f));
-Kaf = W*lr/L/Caf;
-
-Br = 8;
-Cr = 1.5;
-Dr = 1.3;
-Er = 0.3;
-
-[max_r, ind_r] = max(pacejka(1, Br, Cr, Dr, Er, slips));
-Car = max_r/slips(ind_r);
-Kar = W*lf/L/Car;
-
-K = Kaf - Kar;
-fprintf("Understeer gradient = %0.2f. Kaf/Kar = %0.2f afmax = %0.2f, armax = %0.2f\n", K, Kaf/Kar, rad2deg(slips(ind_f)), rad2deg(slips(ind_r)));
-
-fs = 50;
+fs = 50; % Sampling frequency
 Ts = 1/fs;
 N = 20;
 
-ns = 15;
+ns = 7;
 nu = 5;
 
-Q = 250*diag([1, 1, 1, 0.3, zeros(1, ns-4)]);
+Q = 250*diag([1, 1, 1, 0.3, 0.1, 0.1, 0.1]);
 QN = Q;
-R = diag([ones(1, 4), 0.1]);
+R = diag([ones(1, nu)]);
 
 QCell = repmat({Q}, 1, N);
-BigQ = blkdiag(QCell{:});
+BigQ = spblkdiag(QCell{:});
 
 RCell = repmat({R}, 1, N);
-BigR = blkdiag(RCell{:});
+BigR = spblkdiag(RCell{:});
 
 y = SX.sym('y', ns);
 u = SX.sym('u', nu);
 
-% Fx = acc_sl*y(8) - W*0.03 - 0.5*1.2*1*0.3*y(4)*y(4);
+% 1. X
+% 2. Y
+% 3. psi
+% 4. Vx
+% 5. Vy
+% 6. Dpsi
+% 7. delta
 
-alphafl = y(7) - atan(y(5) + lf*y(6)/y(4));
-alphafr = y(7) - atan(y(5) + lf*y(6)/y(4));
-alpharl = -atan(y(5) - lr*y(6)/y(4));
-alpharr = -atan(y(5) - lr*y(6)/y(4));
+% Velocity vector in chassis frame
+v_chassis = [y(4); y(5); 0];
 
-Vsxf = y(4) * cos(y(15)) + (y(5) + y(6)*lf) * sin(y(15));
-% Vsxfr = y(4) * cos(y(15)) + (y(5) + y(6)*lf) * sin(y(15));
+% Wheel contact point position vector in chassi frame
+r_fl = [lf; tf/2; 0];
+r_fr = [lf; -tf/2; 0];
+r_rl = [-lr; tf/2; 0];
+r_rr = [-lr; -tf/2; 0];
 
-kappafl = (y(7)*reff - Vsxf)/Vsxf;
-kappafr = (y(8)*reff - Vsxf)/Vsxf;
-kapparl = (y(9)*reff - y(4))/y(4);
-kapparr = (y(10)*reff - y(4))/y(4);
+% Chassis angular yaw velocity vector
+
+Dpsi = [0; 0; y(6)];
+
+% Calculate angular velocity components for wheel contact point
+v_ang_fl = cross(Dpsi, r_fl);
+v_ang_fr = cross(Dpsi, r_fr);
+v_ang_rl = cross(Dpsi, r_rl);
+v_ang_rr = cross(Dpsi, r_rr);
+
+v_fl = v_chassis + v_ang_fl;
+v_fr = v_chassis + v_ang_fr;
+v_rl = v_chassis + v_ang_rl;
+v_rr = v_chassis + v_ang_rr;
+
+% tranform front wheels frame due to steering rotation (global to local)
+Rz = [cos(y(3)) -sin(y(3)) 0;
+      sin(y(3)) cos(y(3)) 0;
+      0 0 1].';
+
+v_fl_wf = Rz * v_fl;
+v_fr_wf = Rz * v_fr;
+
+alpha_fl = y(7) - atan2(v_fl_wf(2), v_fl_wf(1));
+alpha_fr = y(7) - atan2(v_fr_wf(2), v_fr_wf(1));
+alpha_rl = -atan2(v_rl(2), v_rl(1));
+alpha_rr = -atan2(v_rr(2), v_rr(1));
 
 Fzf = M*9.81*lr/L;
 Fzr = M*9.81*lf/L;
