@@ -37,9 +37,10 @@ BigQ = spblkdiag(QCell{:});
 RCell = repmat({R}, 1, N);
 BigR = spblkdiag(RCell{:});
 
-y = SX.sym('y', ns);
-u = SX.sym('u', nu);
+y = MX.sym('y', ns);
+u = MX.sym('u', nu);
 
+% Y
 % 1. X
 % 2. Y
 % 3. psi
@@ -47,6 +48,13 @@ u = SX.sym('u', nu);
 % 5. Vy
 % 6. Dpsi
 % 7. delta
+
+% U
+% 1. Ddelta
+% 2. kappa_fl
+% 3. kappa_fr
+% 4. kappa_rl
+% 5. kappa_rr
 
 % Velocity vector in chassis frame
 v_chassis = [y(4); y(5); 0];
@@ -67,54 +75,80 @@ v_ang_fr = cross(Dpsi, r_fr);
 v_ang_rl = cross(Dpsi, r_rl);
 v_ang_rr = cross(Dpsi, r_rr);
 
+% Velocity at the tire contact point in chassis frame
 v_fl = v_chassis + v_ang_fl;
 v_fr = v_chassis + v_ang_fr;
 v_rl = v_chassis + v_ang_rl;
 v_rr = v_chassis + v_ang_rr;
 
-% tranform front wheels frame due to steering rotation (global to local)
-Rz = [cos(y(3)) -sin(y(3)) 0;
-      sin(y(3)) cos(y(3)) 0;
-      0 0 1].';
+% tranform front wheels frame due to steering rotation (local to global)
+Rz = [cos(y(7)) -sin(y(7)) 0;
+      sin(y(7)) cos(y(7))  0;
+      0            0       1];
 
-v_fl_wf = Rz * v_fl;
-v_fr_wf = Rz * v_fr;
+Rzp = Rz.'; % global to local (because rotaiton matrix is orthogonal Rz^-1 = Rz.')
 
-alpha_fl = y(7) - atan2(v_fl_wf(2), v_fl_wf(1));
-alpha_fr = y(7) - atan2(v_fr_wf(2), v_fr_wf(1));
+v_fl_wf = Rzp * v_fl;
+v_fr_wf = Rzp * v_fr;
+
+alpha_fl = -atan2(v_fl_wf(2), v_fl_wf(1));
+alpha_fr = -atan2(v_fr_wf(2), v_fr_wf(1));
 alpha_rl = -atan2(v_rl(2), v_rl(1));
 alpha_rr = -atan2(v_rr(2), v_rr(1));
+
+Fx_data = readtable("./data/tire.xlsx", "Sheet", "Fx");
+Fx_data = reshape(Fx_data.Fx_N, 10, []).';
+
+Fy_data = readtable("./data/tire.xlsx", "Sheet", "Fy");
+Fy_data = abs(reshape(Fy_data.Fy_N, 10, []).');
+
+Fz_range = linspace(100, 1000, 10);
+kappa_range = linspace(0, 0.9, 10);
+alpha_range = linspace(0, pi/2, 10);
+
+Fx_fcn = interpolant('Fx_fcn','bspline', {Fz_range, kappa_range}, Fx_data(:));
+Fy_fcn = interpolant('Fy_fcn','bspline', {Fz_range, alpha_range}, Fy_data(:));
 
 Fzf = M*9.81*lr/L;
 Fzr = M*9.81*lf/L;
 
-Fyfl = pacejka(Fzf/2, Bf, Cf, Df, Ef, alphafl);
-Fyfr = pacejka(Fzf/2, Br, Cr, Dr, Er, alphafr);
-Fyrl = pacejka(Fzr/2, Bf, Cf, Df, Ef, alpharl);
-Fyrr = pacejka(Fzr/2, Br, Cr, Dr, Er, alpharr);
+% Tire force front left
+Fx_fl = Fx_fcn([Fzf/2, u(2)]);
+Fy_fl = Fy_fcn([Fzf/2, alpha_fl]);
+F_fl_wf = [Fx_fl; Fy_fl; 0];
+F_fl = Rz*F_fl_wf;
 
-Fxfl = pacejka(Fzf/2, Bf, Cf, Df, Ef, kappafl);
-Fxfr = pacejka(Fzf/2, Br, Cr, Dr, Er, kappafr);
-Fxrl = pacejka(Fzr/2, Bf, Cf, Df, Ef, kapparl);
-Fxrr = pacejka(Fzr/2, Br, Cr, Dr, Er, kapparr);
+% Tire force front right
+Fx_fr = Fx_fcn([Fzf/2, u(3)]);
+Fy_fr = Fy_fcn([Fzf/2, alpha_fr]);
+F_fr_wf = [Fx_fr; Fy_fr; 0];
+F_fr = Rz*F_fr_wf;
 
-% w_tr = (Ffx+Frx)*h/L;
+% Tire force rear left
+Fx_rl = Fx_fcn([Fzr/2, u(4)]);
+Fy_rl = Fy_fcn([Fzr/2, alpha_rl]);
+F_rl = [Fx_rl; Fy_rl; 0];
+
+% Tire force rear right
+Fx_rr = Fx_fcn([Fzr/2, u(5)]);
+Fy_rr = Fy_fcn([Fzr/2, alpha_rr]);
+F_rr = [Fx_rr; Fy_rr; 0];
+
+% Total force on chassis
+F_total = F_fl + F_fr + F_rl + F_rr;
+
+Mz_total = cross(r_fl, F_fl) + ...
+           cross(r_fr, F_fr) + ...
+           cross(r_rl, F_rl) + ...
+           cross(r_rr, F_rr);
 
 ode_rhs = [y(4)*cos(y(3)) - y(5)*sin(y(3)); % 1 Global X
            y(4)*sin(y(3)) + y(5)*cos(y(3)); % 2 Global Y
-           y(6); % 3 Global yaw
-           1/M*(Fxfl*cos(y(15))+Fxfr*cos(y(15))+Fxrl+Fxrr-Fyfl*sin(y(15))-Fyfr*sin(y(15))+M*y(5)*y(6)); % 4 Vx
-           1/M*(Fyrl+Fyrr+Fyfl*cos(y(15))+Fyfr*cos(y(15))+Fxfl*sin(y(15))+Fxfr*sin(y(15))-M*y(4)*y(6)); % 5 Vy
-           1/Iz*(Fyfl*cos(y(15))*lf+Fyfr*cos(y(15))-Fyrl*lr-Fyrr*lr+Fxfl*sin(y(15))*lf+Fxfr*sin(y(15))); % 6 Psi_dot
-           (acc_sl*y(12)-Fxfl*rl)/Iww; % 7 w_fl
-           (acc_sl*y(13)-Fxfr*rl)/Iww; % 8 w_fr
-           (acc_sl*y(14)-Fxrl*rl)/Iww; % 9 w_rl
-           (acc_sl*y(15)-Fxrr*rl)/Iww; % 10 w_rr
-           u(1); % 11 t_fl
-           u(2); % 12 t_fr
-           u(3); % 13 t_rl
-           u(4); % 14 t_rr
-           u(5)]; % 15 steering
+           y(6);                            % 3 Global yaw
+           1/M*(F_total(1)+M*y(5)*y(6));    % 4 Vx
+           1/M*(F_total(2)-M*y(4)*y(6));    % 5 Vy
+           1/Iz*(Mz_total(3));              % 6 Psi_dot
+           u(1)];                           % 7 steering
 
 f_ode = Function('f', {y, u}, {ode_rhs}, {'y', 'u'}, {'f'});
 
