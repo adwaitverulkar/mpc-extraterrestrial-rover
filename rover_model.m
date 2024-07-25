@@ -137,6 +137,7 @@ F_rr = [Fx_rr; Fy_rr; 0];
 % Total force on chassis
 F_total = F_fl + F_fr + F_rl + F_rr;
 
+% Total moment on chassis
 Mz_total = cross(r_fl, F_fl) + ...
            cross(r_fr, F_fr) + ...
            cross(r_rl, F_rl) + ...
@@ -161,12 +162,12 @@ y_next = y + Ts*(k1 + 2*k2 + 2*k3 + k4)/6;
 
 fd_ode = Function('fd', {y, u}, {y_next}, {'y', 'u'}, {'y_next'});
 
-Y = SX.sym('Y', ns, N+1);
-U = SX.sym('U', nu, N);
+Y = MX.sym('Y', ns, N+1);
+U = MX.sym('U', nu, N);
 Y_next = fd_ode(Y(:, 1:end-1), U);
 
-Yr = SX.sym('Yr', ns, N);
-Y0 = SX.sym('Y0', ns);
+Yr = MX.sym('Yr', ns, N);
+Y0 = MX.sym('Y0', ns);
 
 nlp = struct;
 nlp.x = [vec(Y); vec(U)];
@@ -175,13 +176,13 @@ nlp.p = [Y0; vec(Yr)];
 nlp.g = [Y(:, 1) - Y0; 
          vec(Y(:, 2:end))-vec(Y_next)];
 
-ymax = [Inf, Inf, Inf, 100, Inf, Inf, Inf, Inf, Inf, Inf, 1, 1, 1, 1, deg2rad(35)].';
-ymin = [-Inf, -Inf, -Inf, 1, -Inf, -Inf, 0.1, 0.1, 0.1, 0.1, -1, -1, -1, -1, -deg2rad(35)].';
+ymax = [Inf, Inf, Inf, 100, Inf, Inf, deg2rad(35)].';
+ymin = [-Inf, -Inf, -Inf, 1, -Inf, -Inf, -deg2rad(35)].';
 
 Ymax = repmat(ymax, 1, N+1);
 Ymin = repmat(ymin, 1, N+1);
 
-umax = [0.2, 0.2, 0.2, 0.2, deg2rad(10)].';
+umax = [deg2rad(10), 1, 1, 1, 1].';
 umin = -umax;
 
 Umax = repmat(umax, 1, N);
