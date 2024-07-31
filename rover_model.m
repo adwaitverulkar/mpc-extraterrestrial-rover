@@ -177,7 +177,7 @@ nlp.g = [Y(:, 1) - Y0;
          vec(Y(:, 2:end))-vec(Y_next)];
 
 ymax = [Inf, Inf, Inf, 100, Inf, Inf, deg2rad(35)].';
-ymin = [-Inf, -Inf, -Inf, 1, -Inf, -Inf, -deg2rad(35)].';
+ymin = [-Inf, -Inf, -Inf, 0.1, -Inf, -Inf, -deg2rad(35)].';
 
 Ymax = repmat(ymax, 1, N+1);
 Ymin = repmat(ymin, 1, N+1);
