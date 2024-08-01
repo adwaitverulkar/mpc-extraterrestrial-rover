@@ -1,11 +1,10 @@
 clc, clear, close all;
 addpath casadi-3.6.4-windows64-matlab2018b\
-addpath rbf\
 import casadi.*
 
-M = 600;
+M = 80;
 W = M*9.81;
-Iz = 1000;
+Iz = 80;
 lf = 1.3;
 lr = 1.2;
 tf = 1.3;
@@ -96,18 +95,26 @@ alpha_fr = -atan2(v_fr_wf(2), v_fr_wf(1));
 alpha_rl = -atan2(v_rl(2), v_rl(1));
 alpha_rr = -atan2(v_rr(2), v_rr(1));
 
+alpha_fl_fcn = Function('alpha_fl', {y, u}, {alpha_fl});
+alpha_fr_fcn = Function('alpha_fl', {y, u}, {alpha_fr});
+alpha_rl_fcn = Function('alpha_fl', {y, u}, {alpha_rl});
+alpha_rr_fcn = Function('alpha_fl', {y, u}, {alpha_rr});
+
 Fx_data = readtable("./data/tire.xlsx", "Sheet", "Fx");
 Fx_data = reshape(Fx_data.Fx_N, 10, []).';
+Fx_data = [fliplr(-Fx_data(:, 2:end)), Fx_data];
 
 Fy_data = readtable("./data/tire.xlsx", "Sheet", "Fy");
 Fy_data = abs(reshape(Fy_data.Fy_N, 10, []).');
+Fy_data = [fliplr(-Fy_data(:, 2:end)), Fy_data];
 
 Fz_range = linspace(100, 1000, 10);
-kappa_range = linspace(0, 0.9, 10);
-alpha_range = linspace(0, pi/2, 10);
+kappa_range = linspace(-0.9, 0.9, 19);
+alpha_range = linspace(-pi/2, pi/2, 19);
 
 Fx_fcn = interpolant('Fx_fcn','bspline', {Fz_range, kappa_range}, Fx_data(:));
 Fy_fcn = interpolant('Fy_fcn','bspline', {Fz_range, alpha_range}, Fy_data(:));
+
 
 Fzf = M*9.81*lr/L;
 Fzr = M*9.81*lf/L;
@@ -117,6 +124,8 @@ Fx_fl = Fx_fcn([Fzf/2, u(2)]);
 Fy_fl = Fy_fcn([Fzf/2, alpha_fl]);
 F_fl_wf = [Fx_fl; Fy_fl; 0];
 F_fl = Rz*F_fl_wf;
+
+F_fl_fcn = Function('Fy_fl', {y, u}, {F_fl});
 
 % Tire force front right
 Fx_fr = Fx_fcn([Fzf/2, u(3)]);
@@ -162,142 +171,47 @@ y_next = y + Ts*(k1 + 2*k2 + 2*k3 + k4)/6;
 
 fd_ode = Function('fd', {y, u}, {y_next}, {'y', 'u'}, {'y_next'});
 
-Y = MX.sym('Y', ns, N+1);
-U = MX.sym('U', nu, N);
+ref_traj = generate_path(Ts);
+
+opti = Opti();
+
+Y = opti.variable(ns, N+1);
+U = opti.variable(nu, N);
 Y_next = fd_ode(Y(:, 1:end-1), U);
 
-Yr = MX.sym('Yr', ns, N);
-Y0 = MX.sym('Y0', ns);
+Yr = opti.parameter(ns, N);
+Y0 = opti.parameter(ns);
 
-nlp = struct;
-nlp.x = [vec(Y); vec(U)];
-nlp.f = bilin(BigQ, vec(Y(:, 2:end) - Yr)) + bilin(BigR, vec(U)) + bilin(QN, Y(:, end) - Yr(:, end));
-nlp.p = [Y0; vec(Yr)];
-nlp.g = [Y(:, 1) - Y0; 
-         vec(Y(:, 2:end))-vec(Y_next)];
+obj = bilin(BigQ, vec(Y(:, 2:end) - Yr)) + bilin(BigR, vec(U)) + bilin(QN, Y(:, end) - Yr(:, end));
+
+alpha_max = pi/2;
+alpha_min = -alpha_max;
 
 ymax = [Inf, Inf, Inf, 100, Inf, Inf, deg2rad(35)].';
 ymin = [-Inf, -Inf, -Inf, 0.1, -Inf, -Inf, -deg2rad(35)].';
 
-Ymax = repmat(ymax, 1, N+1);
-Ymin = repmat(ymin, 1, N+1);
-
-umax = [deg2rad(10), 1, 1, 1, 1].';
+umax = [1, 0.8, 0.8, 0.8, 0.8].';
 umin = -umax;
 
-Umax = repmat(umax, 1, N);
-Umin = repmat(umin, 1, N);
+opti.minimize(obj);
+opti.subject_to(Y(:, 1) == Y0);
+opti.subject_to(vec(Y(:, 2:end)) == vec(Y_next));
+opti.subject_to(alpha_min <= alpha_fl_fcn(Y(:, 2:end), U) <= alpha_max);
+opti.subject_to(alpha_min <= alpha_fr_fcn(Y(:, 2:end), U) <= alpha_max);
+opti.subject_to(alpha_min <= alpha_rl_fcn(Y(:, 2:end), U) <= alpha_max);
+opti.subject_to(alpha_min <= alpha_rr_fcn(Y(:, 2:end), U) <= alpha_max);
+opti.subject_to(ymin <= Y <= ymax);
+opti.subject_to(umin <= U <= umax);
 
-ubx = [reshape(Ymax, [], 1); reshape(Umax, [], 1)];
-lbx = [reshape(Ymin, [], 1); reshape(Umin, [], 1)];
+opti.solver('ipopt');
 
-ubg = zeros((N+1)*ns,1);
-lbg = ubg;
-
-ipopt_opts = struct;
-ipopt_opts.ipopt.print_level = 5;
-ipopt_opts.ipopt.tol = 1e-2;
-ipopt_opts.ipopt.acceptable_tol = 1e-2;
-ipopt_opts.ipopt.linear_solver = 'ma57';
-% ipopt_opts.ipopt.hessian_approximation = 'limited-memory';
-% ipopt_opts.ipopt.max_iter = 100;
-
-solver = nlpsol('solver', 'ipopt', nlp, ipopt_opts);
-
-ref_traj = berlin_2018(Ts);
-ref_traj = [ref_traj; zeros(ns-8, size(ref_traj, 2))];
-ref_traj = ref_traj(:, 1:50);
-
-bound1 = readmatrix('./global_racetrajectory_optimization/bound1.csv');
-bound2 = readmatrix('./global_racetrajectory_optimization/bound2.csv');
-refline = readmatrix('./global_racetrajectory_optimization/refline.csv');
-% 
-% plot(refline(:, 1), refline(:, 2), 'Color','blue');
-% hold on;
-% plot(ref_traj(1, :), ref_traj(2, :), 'Color','green');
-% plot(bound1(:, 1), bound1(:, 2), 'Color','magenta');
-% plot(bound2(:, 1), bound2(:, 2), 'Color','black');
-
-Y0_num = ref_traj(:, 1);
-Y0_num(7:10) = Y0_num(4)/reff;
+Y0_num = ref_traj(:, 30);
 
 num_pts = size(ref_traj, 2);
 
-sol = solver('x0', zeros(nu*N+ns*(N+1), 1), ...
-      'p', [Y0_num; reshape(ref_traj(:, 1:N), [], 1)], ...
-      'ubx', ubx, 'lbx', lbx, 'ubg', ubg, 'lbg', lbg);
+opti.set_value(Y0, Y0_num+0.1*randn(7,1));
+opti.set_value(Yr, ref_traj(:, 31:N+30));
 
-sol = full(sol.x);
-
-Yopt = reshape(sol(1:(N+1)*ns), ns, []);
-Uopt = reshape(sol((N+1)*ns+1:end), nu, []);
-
-i = 1;
-j = 1;
-
-while i+N-1 < num_pts
-
-    state_history(:, j) = Y0_num;
-
-    Yr_num = ref_traj(:, i:i+N-1);
-
-    sol = solver('x0', sol, ...
-          'p', [Y0_num; reshape(Yr_num, [], 1)], ...
-          'ubx', ubx, 'lbx', lbx, 'ubg', ubg, 'lbg', lbg);
-
-    sol = full(sol.x);
-
-    Yopt = reshape(sol(1:(N+1)*ns), ns, []);
-    Uopt = reshape(sol((N+1)*ns+1:end), nu, []);
-
-    control_history(:, j) = [Yopt(11:ns, 1); Uopt(1:nu, 1)];
-
-    Y0_num = full(fd_ode(Y0_num, Uopt(1:nu)));
-
-    i = find_closest_index(Y0_num(1), Y0_num(2), ref_traj(1:2, :).')
-
-    j = j + 1;
-
-end
-
-acceleration_history = full(f_ode(state_history, control_history(3:4, :)));
-
-numpts = size(control_history, 2);
-
-figure
-plot(state_history(1,:), state_history(2,:), 'linewidth', 3)
-xlabel("X (m)");
-ylabel("Y (m)");
-hold on
-plot(ref_traj(1, 1:end-N), ref_traj(2, 1:end-N), '--', 'linewidth', 1.5)
-
-figure
-plot(linspace(0, Ts*(numpts-1), numpts), state_history(4,:), 'linewidth', 3)
-xlabel("time (s)");
-ylabel("v_x (m/s)");
-
-figure
-plot(linspace(0, Ts*(numpts-1), numpts), control_history(1, :))
-xlabel("time (s)")
-ylabel("steering (rad)")
-
-figure
-plot(linspace(0, Ts*(numpts-1), numpts), control_history(2, :))
-xlabel("time (s)")
-ylabel("throttle-brake")
-
-figure
-plot(linspace(0, Ts*(numpts-1), numpts), control_history(3, :))
-xlabel("time (s)")
-ylabel("steering rate (rad/sec)")
-
-figure
-plot(linspace(0, Ts*(numpts-1), numpts), control_history(4, :))
-xlabel("time (s)")
-ylabel("throttle-brake rate")
-
-% save("MPC_run.mat", 'Ts', 'state_history', 'control_history', 'acceleration_history')
-
-
+opti.solve()
 
 
