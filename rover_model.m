@@ -90,57 +90,69 @@ Rzp = Rz.'; % global to local (because rotaiton matrix is orthogonal Rz^-1 = Rz.
 v_fl_wf = Rzp * v_fl;
 v_fr_wf = Rzp * v_fr;
 
-alpha_fl = -atan2(v_fl_wf(2), v_fl_wf(1));
-alpha_fr = -atan2(v_fr_wf(2), v_fr_wf(1));
-alpha_rl = -atan2(v_rl(2), v_rl(1));
-alpha_rr = -atan2(v_rr(2), v_rr(1));
+alpha_fl = -atan(v_fl_wf(2)/cabs(v_fl_wf(1)));
+alpha_fr = -atan(v_fr_wf(2)/cabs(v_fr_wf(1)));
+alpha_rl = -atan(v_rl(2)/cabs(v_rl(1)));
+alpha_rr = -atan(v_rr(2)/cabs(v_rr(1)));
 
 alpha_fl_fcn = Function('alpha_fl', {y, u}, {alpha_fl});
-alpha_fr_fcn = Function('alpha_fl', {y, u}, {alpha_fr});
-alpha_rl_fcn = Function('alpha_fl', {y, u}, {alpha_rl});
-alpha_rr_fcn = Function('alpha_fl', {y, u}, {alpha_rr});
+alpha_fr_fcn = Function('alpha_fr', {y, u}, {alpha_fr});
+alpha_rl_fcn = Function('alpha_rl', {y, u}, {alpha_rl});
+alpha_rr_fcn = Function('alpha_rr', {y, u}, {alpha_rr});
 
-Fx_data = readtable("./data/tire.xlsx", "Sheet", "Fx");
-Fx_data = reshape(Fx_data.Fx_N, 10, []).';
-Fx_data = [fliplr(-Fx_data(:, 2:end)), Fx_data];
-
-Fy_data = readtable("./data/tire.xlsx", "Sheet", "Fy");
-Fy_data = abs(reshape(Fy_data.Fy_N, 10, []).');
-Fy_data = [fliplr(-Fy_data(:, 2:end)), Fy_data];
-
-Fz_range = linspace(100, 1000, 10);
-kappa_range = linspace(-0.9, 0.9, 19);
-alpha_range = linspace(-pi/2, pi/2, 19);
-
-Fx_fcn = interpolant('Fx_fcn','bspline', {Fz_range, kappa_range}, Fx_data(:));
-Fy_fcn = interpolant('Fy_fcn','bspline', {Fz_range, alpha_range}, Fy_data(:));
-
+% Fx_data = readtable("./data/tire.xlsx", "Sheet", "Fx");
+% Fx_data = reshape(Fx_data.Fx_N, 10, []).';
+% Fx_data = [fliplr(-Fx_data(:, 2:end)), Fx_data];
+% 
+% Fy_data = readtable("./data/tire.xlsx", "Sheet", "Fy");
+% Fy_data = abs(reshape(Fy_data.Fy_N, 10, []).');
+% Fy_data = [fliplr(-Fy_data(:, 2:end)), Fy_data];
+% 
+% Fz_range = linspace(100, 1000, 10);
+% kappa_range = linspace(-0.9, 0.9, 19);
+% alpha_range = linspace(-pi/2, pi/2, 19);
+% 
+% Fx_fcn = interpolant('Fx_fcn','bspline', {Fz_range, kappa_range}, Fx_data(:));
+% Fy_fcn = interpolant('Fy_fcn','bspline', {Fz_range, alpha_range}, Fy_data(:));
 
 Fzf = M*9.81*lr/L;
 Fzr = M*9.81*lf/L;
 
+B = 0.714;
+C = 1.40;
+D = 1.00;
+E = -0.20;
+
 % Tire force front left
-Fx_fl = Fx_fcn([Fzf/2, u(2)]);
-Fy_fl = Fy_fcn([Fzf/2, alpha_fl]);
+% Fx_fl = Fx_fcn([Fzf/2, u(2)]);
+% Fy_fl = Fy_fcn([Fzf/2, alpha_fl]);
+Fx_fl = pacejka(Fzf/2, B, C, D, E, u(2));
+Fy_fl = pacejka(Fzf/2, B, C, D, E, alpha_fl);
 F_fl_wf = [Fx_fl; Fy_fl; 0];
 F_fl = Rz*F_fl_wf;
 
 F_fl_fcn = Function('Fy_fl', {y, u}, {F_fl});
 
 % Tire force front right
-Fx_fr = Fx_fcn([Fzf/2, u(3)]);
-Fy_fr = Fy_fcn([Fzf/2, alpha_fr]);
+% Fx_fr = Fx_fcn([Fzf/2, u(3)]);
+% Fy_fr = Fy_fcn([Fzf/2, alpha_fr]);
+Fx_fr = pacejka(Fzf/2, B, C, D, E, u(3));
+Fy_fr = pacejka(Fzf/2, B, C, D, E, alpha_fr);
 F_fr_wf = [Fx_fr; Fy_fr; 0];
 F_fr = Rz*F_fr_wf;
 
 % Tire force rear left
-Fx_rl = Fx_fcn([Fzr/2, u(4)]);
-Fy_rl = Fy_fcn([Fzr/2, alpha_rl]);
+% Fx_rl = Fx_fcn([Fzr/2, u(4)]);
+% Fy_rl = Fy_fcn([Fzr/2, alpha_rl]);
+Fx_rl = pacejka(Fzr/2, B, C, D, E, u(4));
+Fy_rl = pacejka(Fzr/2, B, C, D, E, alpha_rl);
 F_rl = [Fx_rl; Fy_rl; 0];
 
 % Tire force rear right
-Fx_rr = Fx_fcn([Fzr/2, u(5)]);
-Fy_rr = Fy_fcn([Fzr/2, alpha_rr]);
+% Fx_rr = Fx_fcn([Fzr/2, u(5)]);
+% Fy_rr = Fy_fcn([Fzr/2, alpha_rr]);
+Fx_rr = pacejka(Fzr/2, B, C, D, E, u(5));
+Fy_rr = pacejka(Fzr/2, B, C, D, E, alpha_rr);
 F_rr = [Fx_rr; Fy_rr; 0];
 
 % Total force on chassis
@@ -171,7 +183,7 @@ y_next = y + Ts*(k1 + 2*k2 + 2*k3 + k4)/6;
 
 fd_ode = Function('fd', {y, u}, {y_next}, {'y', 'u'}, {'y_next'});
 
-ref_traj = generate_path(Ts);
+[ref_traj, tgrid] = generate_path(Ts);
 
 opti = Opti();
 
@@ -203,15 +215,23 @@ opti.subject_to(alpha_min <= alpha_rr_fcn(Y(:, 2:end), U) <= alpha_max);
 opti.subject_to(ymin <= Y <= ymax);
 opti.subject_to(umin <= U <= umax);
 
-opti.solver('ipopt');
+opts.ipopt.linear_solver = 'ma57';
+opts.expand = true;
+% opts.ipopt.tol = 1e-3;
 
-Y0_num = ref_traj(:, 30);
+opti.solver('ipopt', opts);
+
+Y0_num = ref_traj(:, 1);
 
 num_pts = size(ref_traj, 2);
 
-opti.set_value(Y0, Y0_num+0.1*randn(7,1));
-opti.set_value(Yr, ref_traj(:, 31:N+30));
+% opti.set_value(Y0, Y0_num);
+% opti.set_value(Yr, ref_traj(:, 31:N+30));
 
-opti.solve()
+mpc = opti.to_function('mpc', {Y0, Yr}, {Y, U});
+
+[X_opt, U_opt] = mpc(Y0_num, ref_traj(:, 1:N));
+
+
 
 

@@ -1,7 +1,8 @@
-function Yr = generate_path(Ts)
+function [Yr, time] = generate_path(Ts)
 
-    ref_x = (0:100).';
-    ref_y = zeros(size(ref_x));
+    tgrid = (0:Ts:1).';
+    ref_x = 100*sin(tgrid);
+    ref_y = 100*cos(tgrid);
     ref_z = zeros(size(ref_x));
 
     ref_vx = 2*ones(size(ref_x));
@@ -25,5 +26,7 @@ function Yr = generate_path(Ts)
     Yr(6, :) = angularVelocity(1:end-1, 3).';
 
     Yr(7, :) = zeros(1, num_pts-1);
+
+    time = (0:Ts:((size(Yr, 2)-1) * Ts)).';
 
 end
