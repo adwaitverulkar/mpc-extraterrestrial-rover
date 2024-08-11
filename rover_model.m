@@ -19,14 +19,14 @@ L = lf+lr;
 h = 0.25;
 eps = 1e-4;
 
-fs = 50; % Sampling frequency
+fs = 20; % Sampling frequency
 Ts = 1/fs;
-N = 20;
+N = 40;
 
 ns = 7;
 nu = 5;
 
-Q = 250*diag([1, 1, 1, 0.3, 0.1, 0.1, 0.1]);
+Q = 350*diag([1, 1, 1, 0.3, 0.1, 0.1, 0.1]);
 QN = Q;
 R = diag([ones(1, nu)]);
 
@@ -100,59 +100,29 @@ alpha_fr_fcn = Function('alpha_fr', {y, u}, {alpha_fr});
 alpha_rl_fcn = Function('alpha_rl', {y, u}, {alpha_rl});
 alpha_rr_fcn = Function('alpha_rr', {y, u}, {alpha_rr});
 
-% Fx_data = readtable("./data/tire.xlsx", "Sheet", "Fx");
-% Fx_data = reshape(Fx_data.Fx_N, 10, []).';
-% Fx_data = [fliplr(-Fx_data(:, 2:end)), Fx_data];
-% 
-% Fy_data = readtable("./data/tire.xlsx", "Sheet", "Fy");
-% Fy_data = abs(reshape(Fy_data.Fy_N, 10, []).');
-% Fy_data = [fliplr(-Fy_data(:, 2:end)), Fy_data];
-% 
-% Fz_range = linspace(100, 1000, 10);
-% kappa_range = linspace(-0.9, 0.9, 19);
-% alpha_range = linspace(-pi/2, pi/2, 19);
-% 
-% Fx_fcn = interpolant('Fx_fcn','bspline', {Fz_range, kappa_range}, Fx_data(:));
-% Fy_fcn = interpolant('Fy_fcn','bspline', {Fz_range, alpha_range}, Fy_data(:));
-
 Fzf = M*9.81*lr/L;
 Fzr = M*9.81*lf/L;
 
-B = 0.714;
-C = 1.40;
-D = 1.00;
-E = -0.20;
-
 % Tire force front left
-% Fx_fl = Fx_fcn([Fzf/2, u(2)]);
-% Fy_fl = Fy_fcn([Fzf/2, alpha_fl]);
-Fx_fl = pacejka(Fzf/2, B, C, D, E, u(2));
-Fy_fl = pacejka(Fzf/2, B, C, D, E, alpha_fl);
+Fx_fl = Fx_ChanSandu(u(2), Fzf/2);
+Fy_fl = Fy_ChanSandu(alpha_fl, Fzf/2);
 F_fl_wf = [Fx_fl; Fy_fl; 0];
 F_fl = Rz*F_fl_wf;
 
-F_fl_fcn = Function('Fy_fl', {y, u}, {F_fl});
-
 % Tire force front right
-% Fx_fr = Fx_fcn([Fzf/2, u(3)]);
-% Fy_fr = Fy_fcn([Fzf/2, alpha_fr]);
-Fx_fr = pacejka(Fzf/2, B, C, D, E, u(3));
-Fy_fr = pacejka(Fzf/2, B, C, D, E, alpha_fr);
+Fx_fr = Fx_ChanSandu(u(3), Fzf/2);
+Fy_fr = Fy_ChanSandu(alpha_fr, Fzf/2);
 F_fr_wf = [Fx_fr; Fy_fr; 0];
 F_fr = Rz*F_fr_wf;
 
 % Tire force rear left
-% Fx_rl = Fx_fcn([Fzr/2, u(4)]);
-% Fy_rl = Fy_fcn([Fzr/2, alpha_rl]);
-Fx_rl = pacejka(Fzr/2, B, C, D, E, u(4));
-Fy_rl = pacejka(Fzr/2, B, C, D, E, alpha_rl);
+Fx_rl = Fx_ChanSandu(u(4), Fzr/2);
+Fy_rl = Fy_ChanSandu(alpha_rl, Fzr/2);
 F_rl = [Fx_rl; Fy_rl; 0];
 
 % Tire force rear right
-% Fx_rr = Fx_fcn([Fzr/2, u(5)]);
-% Fy_rr = Fy_fcn([Fzr/2, alpha_rr]);
-Fx_rr = pacejka(Fzr/2, B, C, D, E, u(5));
-Fy_rr = pacejka(Fzr/2, B, C, D, E, alpha_rr);
+Fx_rr = Fx_ChanSandu(u(5), Fzr/2);
+Fy_rr = Fy_ChanSandu(alpha_rr, Fzr/2);
 F_rr = [Fx_rr; Fy_rr; 0];
 
 % Total force on chassis
@@ -199,39 +169,119 @@ obj = bilin(BigQ, vec(Y(:, 2:end) - Yr)) + bilin(BigR, vec(U)) + bilin(QN, Y(:, 
 alpha_max = pi/2;
 alpha_min = -alpha_max;
 
-ymax = [Inf, Inf, Inf, 100, Inf, Inf, deg2rad(35)].';
-ymin = [-Inf, -Inf, -Inf, 0.1, -Inf, -Inf, -deg2rad(35)].';
+ymax = [Inf, Inf, Inf, 100, Inf, Inf, deg2rad(45)].';
+ymin = [-Inf, -Inf, -Inf, 0.1, -Inf, -Inf, -deg2rad(45)].';
 
-umax = [1, 0.8, 0.8, 0.8, 0.8].';
+umax = [10, 1, 1, 1, 1].';
 umin = -umax;
 
 opti.minimize(obj);
+
 opti.subject_to(Y(:, 1) == Y0);
 opti.subject_to(vec(Y(:, 2:end)) == vec(Y_next));
-opti.subject_to(alpha_min <= alpha_fl_fcn(Y(:, 2:end), U) <= alpha_max);
-opti.subject_to(alpha_min <= alpha_fr_fcn(Y(:, 2:end), U) <= alpha_max);
-opti.subject_to(alpha_min <= alpha_rl_fcn(Y(:, 2:end), U) <= alpha_max);
-opti.subject_to(alpha_min <= alpha_rr_fcn(Y(:, 2:end), U) <= alpha_max);
-opti.subject_to(ymin <= Y <= ymax);
-opti.subject_to(umin <= U <= umax);
+opti.subject_to(alpha_min < alpha_fl_fcn(Y(:, 2:end), U) < alpha_max);
+opti.subject_to(alpha_min < alpha_fr_fcn(Y(:, 2:end), U) < alpha_max);
+opti.subject_to(alpha_min < alpha_rl_fcn(Y(:, 2:end), U) < alpha_max);
+opti.subject_to(alpha_min < alpha_rr_fcn(Y(:, 2:end), U) < alpha_max);
+opti.subject_to(ymin < Y < ymax);
+opti.subject_to(umin < U < umax);
 
 opts.ipopt.linear_solver = 'ma57';
 opts.expand = true;
-% opts.ipopt.tol = 1e-3;
+opts.ipopt.tol = 1e-3;
 
 opti.solver('ipopt', opts);
 
 Y0_num = ref_traj(:, 1);
+Yr_num = ref_traj(:, 1:N);
 
-num_pts = size(ref_traj, 2);
+opti.set_value(Y0, Y0_num);
+opti.set_value(Yr, Yr_num);
 
-% opti.set_value(Y0, Y0_num);
-% opti.set_value(Yr, ref_traj(:, 31:N+30));
+sol = opti.solve();
 
-mpc = opti.to_function('mpc', {Y0, Yr}, {Y, U});
+i = 1;
+j = 1;
+numpts = size(ref_traj, 2);
+while i+N-1 < numpts/2
 
-[X_opt, U_opt] = mpc(Y0_num, ref_traj(:, 1:N));
+    state_history(:, j) = Y0_num;
+    Yr_num = ref_traj(:, i:i+N-1);
+    
+    opti.set_value(Y0, Y0_num);
+    opti.set_value(Yr, Yr_num);
+    opti.set_initial(sol.value_variables());
+
+    sol = opti.solve();
+    
+    Y_opt = sol.value(Y);
+    U_opt = sol.value(U);
+
+    control_history(:, j) = [Y_opt(7, 1); U_opt(:, 1)];
+
+    Y0_num = full(fd_ode(Y0_num, U_opt(:, 1)));
+
+    i = find_closest_index(Y0_num(1), Y0_num(2), ref_traj(1:2, :).')
+
+    j = j + 1;
+
+end
+
+acceleration_history = full(f_ode(state_history, control_history(2:end, :)));
+
+numpts = size(control_history, 2);
+
+figure
+plot(state_history(1,:), state_history(2,:), 'linewidth', 3)
+xlabel("X (m)");
+ylabel("Y (m)");
+title("Path")
+hold on
+plot(ref_traj(1, 1:end-N), ref_traj(2, 1:end-N), '--', 'linewidth', 1.5)
+
+figure
+plot(linspace(0, Ts*(numpts-1), numpts), state_history(4, :), 'linewidth', 3)
+xlabel("time (s)");
+ylabel("v_x (m/s)");
+title("Speed")
+
+figure
+plot(linspace(0, Ts*(numpts-1), numpts), state_history(7, :))
+xlabel("time (s)")
+ylabel("steering (rad)")
+title("Steering")
+
+figure
+plot(linspace(0, Ts*(numpts-1), numpts), control_history(1, :))
+xlabel("time (s)")
+ylabel("steering rate (rad/sec)")
+title("Steering Rate")
+
+figure
+plot(linspace(0, Ts*(numpts-1), numpts), control_history(2, :))
+xlabel("time (s)")
+ylabel("$\kappa_{fl}$")
+title("Front Left Slip Ratio")
 
 
+figure
+plot(linspace(0, Ts*(numpts-1), numpts), control_history(3, :))
+xlabel("time (s)")
+ylabel("$\kappa_{fr}$")
+title("Front Right Slip Ratio")
+
+figure
+plot(linspace(0, Ts*(numpts-1), numpts), control_history(4, :))
+xlabel("time (s)")
+ylabel("$\kappa_{rl}$")
+title("Rear Left Slip Ratio")
+
+figure
+plot(linspace(0, Ts*(numpts-1), numpts), control_history(5, :))
+xlabel("time (s)")
+ylabel("$\kappa_{rr}$")
+title("Rear Right Slip Ratio")
+
+% save("MPC_run.mat", 'Ts', 'state_history', 'control_history', 'acceleration_history')
 
 
